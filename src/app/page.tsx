@@ -1,13 +1,31 @@
 "use client"
 
+declare global {
+  interface Window {
+    onYouTubeIframeAPIReady: () => void
+    YT: any
+    player: any
+  }
+}
+
 import { useEffect, useRef, useState } from "react"
-import { motion, useScroll, useTransform, useSpring } from "framer-motion"
+import { motion, useScroll, useTransform, useSpring, AnimatePresence } from "framer-motion"
 import Image from "next/image"
+import { Play, Pause, Volume2, VolumeX, Loader2, Music, X, ExternalLink } from "lucide-react"
 
 export default function DreamersLeagueStory() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const { scrollYProgress } = useScroll({ target: containerRef })
+
+  // Music player state
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const [showMusicControl, setShowMusicControl] = useState(true)
+  const [playerReady, setPlayerReady] = useState(false)
+  const [playerLoading, setPlayerLoading] = useState(true)
+  const [playerError, setPlayerError] = useState(false)
+  const [showMusicRecommendation, setShowMusicRecommendation] = useState(true)
 
   const smoothProgress = useSpring(scrollYProgress, { stiffness: 100, damping: 30 })
   const y1 = useTransform(smoothProgress, [0, 1], [0, -200])
@@ -27,17 +45,332 @@ export default function DreamersLeagueStory() {
     return () => window.removeEventListener("mousemove", handleMouseMove)
   }, [])
 
+  useEffect(() => {
+    // Check if YouTube API is already loaded
+    if (window.YT && window.YT.Player) {
+      initializePlayer()
+      return
+    }
+
+    // Load YouTube IFrame API
+    const tag = document.createElement("script")
+    tag.src = "https://www.youtube.com/iframe_api"
+    const firstScriptTag = document.getElementsByTagName("script")[0]
+    firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag)
+
+    // YouTube API ready callback
+    window.onYouTubeIframeAPIReady = () => {
+      initializePlayer()
+    }
+
+    return () => {
+      if (window.player && typeof window.player.destroy === "function") {
+        try {
+          window.player.destroy()
+        } catch (error) {
+          console.log("Player cleanup error:", error)
+        }
+      }
+    }
+  }, [])
+
+  const initializePlayer = () => {
+    try {
+      window.player = new window.YT.Player("youtube-player", {
+        height: "0",
+        width: "0",
+        videoId: "b9HpOAYjY9I",
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          iv_load_policy: 3,
+          modestbranding: 1,
+          playsinline: 1,
+          rel: 0,
+          showinfo: 0,
+          origin: window.location.origin,
+        },
+        events: {
+          onReady: (event) => {
+            console.log("YouTube player ready")
+            setPlayerReady(true)
+            setPlayerLoading(false)
+            setPlayerError(false)
+            try {
+              event.target.setVolume(25) // Set to 25% volume for background music
+            } catch (error) {
+              console.log("Volume setting error:", error)
+            }
+          },
+          onStateChange: (event) => {
+            if (event.data === window.YT.PlayerState.PLAYING) {
+              setIsPlaying(true)
+            } else if (event.data === window.YT.PlayerState.PAUSED) {
+              setIsPlaying(false)
+            } else if (event.data === window.YT.PlayerState.ENDED) {
+              // Loop the music
+              try {
+                event.target.playVideo()
+              } catch (error) {
+                console.log("Replay error:", error)
+              }
+            }
+          },
+          onError: (event) => {
+            console.log("YouTube player error:", event.data)
+            setPlayerLoading(false)
+            setPlayerReady(false)
+            setPlayerError(true)
+
+            // Handle specific YouTube errors
+            switch (event.data) {
+              case 2:
+                console.log("Invalid video ID")
+                break
+              case 5:
+                console.log("HTML5 player error")
+                break
+              case 100:
+                console.log("Video not found or private")
+                break
+              case 101:
+              case 150:
+                console.log("Video cannot be embedded")
+                break
+              default:
+                console.log("Unknown error")
+            }
+          },
+        },
+      })
+    } catch (error) {
+      console.log("Player initialization error:", error)
+      setPlayerLoading(false)
+      setPlayerReady(false)
+      setPlayerError(true)
+    }
+  }
+
+  const toggleMusic = () => {
+    if (!playerReady || !window.player) {
+      console.log("Player not ready yet")
+      return
+    }
+
+    try {
+      if (isPlaying) {
+        window.player.pauseVideo()
+      } else {
+        window.player.playVideo()
+      }
+    } catch (error) {
+      console.log("Toggle music error:", error)
+    }
+  }
+
+  const toggleMute = () => {
+    if (!playerReady || !window.player) {
+      console.log("Player not ready yet")
+      return
+    }
+
+    try {
+      if (isMuted) {
+        window.player.unMute()
+        setIsMuted(false)
+      } else {
+        window.player.mute()
+        setIsMuted(true)
+      }
+    } catch (error) {
+      console.log("Toggle mute error:", error)
+    }
+  }
+
+  const openYouTubeDirectly = () => {
+    window.open("https://www.youtube.com/watch?v=b9HpOAYjY9I", "_blank")
+  }
+
+  const startMusicExperience = () => {
+    setShowMusicRecommendation(false)
+    if (playerReady && !playerError) {
+      toggleMusic()
+    }
+  }
+
   return (
     <div ref={containerRef} className="relative">
+      {/* Hidden YouTube Player */}
+      <div id="youtube-player" style={{ display: "none" }}></div>
+
+      {/* Music Recommendation Modal */}
+      <AnimatePresence>
+        {showMusicRecommendation && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-neutral-200"
+            >
+              <div className="text-center space-y-6">
+                <motion.div
+                  animate={{ rotate: [0, 5, -5, 0] }}
+                  transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY }}
+                  className="w-16 h-16 bg-gradient-to-br from-neutral-800 to-neutral-600 rounded-full flex items-center justify-center mx-auto"
+                >
+                  <Music className="w-8 h-8 text-white" />
+                </motion.div>
+
+                <div>
+                  <h3 className="text-2xl font-light mb-2 text-neutral-900">Enhance Your Experience</h3>
+                  <p className="text-neutral-600 leading-relaxed">
+                    We recommend playing background music while reading this story for an immersive experience.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={startMusicExperience}
+                    disabled={playerLoading}
+                    className="w-full bg-neutral-900 text-white py-3 px-6 rounded-lg hover:bg-neutral-800 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                  >
+                    {playerLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Loading Music...</span>
+                      </>
+                    ) : playerError ? (
+                      <>
+                        <ExternalLink className="w-4 h-4" />
+                        <span>Open Music in YouTube</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4" />
+                        <span>Start with Music</span>
+                      </>
+                    )}
+                  </button>
+
+                  {playerError && (
+                    <button
+                      onClick={openYouTubeDirectly}
+                      className="w-full border border-neutral-300 text-neutral-700 py-3 px-6 rounded-lg hover:bg-neutral-50 transition-colors font-medium flex items-center justify-center space-x-2"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Play on YouTube</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => setShowMusicRecommendation(false)}
+                    className="w-full text-neutral-500 py-2 hover:text-neutral-700 transition-colors"
+                  >
+                    Continue without music
+                  </button>
+                </div>
+
+                {playerError && (
+                  <div className="text-xs text-neutral-500 bg-neutral-50 p-3 rounded-lg">
+                    <p>
+                      This video has embedding restrictions. You can still enjoy the music by opening it in YouTube.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Floating Logo */}
       <motion.div
         initial={{ opacity: 0, scale: 0.8, y: -20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 1.5, delay: 0.5 }}
-        className="fixed top-8 left-8 z-50 bg-white/90 backdrop-blur-sm rounded-full p-3 shadow-lg border border-neutral-200/50"
+        className="fixed top-8 left-8 z-40 bg-white/90 backdrop-blur-sm rounded-full p-3 shadow-lg border border-neutral-200/50"
       >
         <Image src="/images/logo.jpg" alt="Dreamskrin Logo" width={40} height={40} className="rounded-full" />
       </motion.div>
+
+      {/* Floating Music Control */}
+      {showMusicControl && !showMusicRecommendation && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8, x: 100 }}
+          animate={{ opacity: 1, scale: 1, x: 0 }}
+          transition={{ duration: 1.5, delay: 1 }}
+          className="fixed top-8 right-8 z-40 bg-white/90 backdrop-blur-sm rounded-full p-4 shadow-lg border border-neutral-200/50"
+        >
+          <div className="flex items-center space-x-3">
+            {!playerError ? (
+              <>
+                <button
+                  onClick={toggleMusic}
+                  disabled={!playerReady || playerLoading}
+                  className="w-10 h-10 rounded-full bg-neutral-900 text-white flex items-center justify-center hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={isPlaying ? "Pause music" : "Play music"}
+                >
+                  {playerLoading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : isPlaying ? (
+                    <Pause size={16} />
+                  ) : (
+                    <Play size={16} />
+                  )}
+                </button>
+
+                <button
+                  onClick={toggleMute}
+                  disabled={!playerReady || playerLoading}
+                  className="w-8 h-8 rounded-full bg-neutral-100 text-neutral-600 flex items-center justify-center hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={isMuted ? "Unmute" : "Mute"}
+                >
+                  {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={openYouTubeDirectly}
+                className="w-10 h-10 rounded-full bg-neutral-900 text-white flex items-center justify-center hover:bg-neutral-700 transition-colors"
+                aria-label="Open music in YouTube"
+              >
+                <ExternalLink size={16} />
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowMusicControl(false)}
+              className="w-6 h-6 rounded-full bg-neutral-100 text-neutral-400 flex items-center justify-center hover:bg-neutral-200 transition-colors text-xs"
+              aria-label="Hide music control"
+            >
+              <X size={12} />
+            </button>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 2 }}
+            className="text-xs text-neutral-500 mt-2 text-center font-mono"
+          >
+            {playerLoading
+              ? "Loading..."
+              : playerError
+                ? "Click for YouTube"
+                : playerReady
+                  ? "Background Music"
+                  : "Music Unavailable"}
+          </motion.div>
+        </motion.div>
+      )}
 
       {/* Hero Section */}
       <section className="min-h-screen flex items-center justify-center relative overflow-hidden">
@@ -667,7 +1000,7 @@ export default function DreamersLeagueStory() {
           <div className="flex justify-between items-center text-xs text-neutral-500 font-mono mb-8">
             <div className="flex items-center space-x-4">
               <Image src="/images/logo.jpg" alt="Dream Skrin Logo" width={32} height={32} className="rounded-full" />
-              <span>© 2025 Dreamskrin</span>
+              <span>© 2024 Dreamskrin</span>
             </div>
             <div className="flex space-x-8">
               <button className="hover:text-neutral-700 transition-colors">Privacy</button>
